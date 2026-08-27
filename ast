@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+#
+# ast — Attack Surface Toolkit single entry point
+#
+# Usage:
+#   ast <tool> [args...]
+#   ast run-pipeline <domain> [options]
+#   ast run-quick <domain> [options]
+#   ast run-no-pdf <domain> [options]
+#
+# Examples:
+#   ast whois example.com
+#   ast crtsh example.com
+#   ast run-pipeline example.com --out reports
+#   ast run-quick example.com
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+VENV_PY="${SCRIPT_DIR}/scripts/venv/bin/python"
+
+# Ensure venv exists
+if [ ! -x "${VENV_PY}" ]; then
+    echo "[!] Virtual environment not found at ${VENV_PY}"
+    echo "    Run 'make setup' first to create the venv and install dependencies."
+    exit 1
+fi
+
+# Special pipeline commands
+case "${1:-}" in
+    run-pipeline|run-quick|run-no-pdf)
+        CMD="${1}"
+        shift
+        EXTRA_ARGS=()
+        if [ "${CMD}" = "run-quick" ]; then
+            EXTRA_ARGS+=(--skip cloud_bucket_enum.py username_presence_check.py wayback_urls.py)
+        elif [ "${CMD}" = "run-no-pdf" ]; then
+            EXTRA_ARGS+=(--no-pdf)
+        fi
+        exec "${VENV_PY}" "${SCRIPT_DIR}/scripts/run_pipeline.py" "$@" "${EXTRA_ARGS[@]}"
+        ;;
+    --help|-h|help)
+        echo "Attack Surface Toolkit (ast)"
+        echo ""
+        echo "Pipeline commands:"
+        echo "  ast run-pipeline <domain> [options]   Run full pipeline"
+        echo "  ast run-quick <domain> [options]      Run fast subset (no buckets/username/wayback)"
+        echo "  ast run-no-pdf <domain> [options]     Run pipeline without PDF"
+        echo ""
+        echo "Individual tools:"
+        echo "  ast whois <domain>"
+        echo "  ast crtsh <domain>"
+        echo "  ast wayback <domain>"
+        echo "  ast asn <domain>"
+        echo "  ast dns-axfr <domain>"
+        echo "  ast tech <url>"
+        echo "  ast ssl <domain>"
+        echo "  ast headers <url>"
+        echo "  ast robots <url>"
+        echo "  ast takeover <subdomains.txt>"
+        echo "  ast buckets <name>"
+        echo "  ast github-dorks <org> <domain>"
+        echo "  ast search-dorks <org> <domain>"
+        echo "  ast handles <username>"
+        echo "  ast emails <domain> <name>"
+        echo "  ast merge <indir> --out <prefix>"
+        echo "  ast dashboard <inventory.json> --out <path>"
+        echo "  ast single-pdf <indir> --out <path>"
+        echo ""
+        echo "Examples:"
+        echo "  ast whois example.com"
+        echo "  ast run-pipeline example.com --out reports"
+        echo "  ast run-quick example.com"
+        exit 0
+        ;;
+esac
+
+# Map short tool names to script files
+TOOL_MAP=(
+    "whois:whois_dns_recon.py"
+    "crtsh:crtsh_subdomains.py"
+    "wayback:wayback_urls.py"
+    "shodan:shodan_search.py"
+    "asn:ipinfo_asn_lookup.py"
+    "dns-axfr:dns_zone_transfer_check.py"
+    "tech:tech_fingerprint.py"
+    "ssl:ssl_cert_inspector.py"
+    "headers:security_headers_check.py"
+    "robots:robots_sitemap_recon.py"
+    "takeover:subdomain_takeover_check.py"
+    "buckets:cloud_bucket_enum.py"
+    "github-dorks:github_dork_recon.py"
+    "search-dorks:search_dork_generator.py"
+    "handles:username_presence_check.py"
+    "emails:email_pattern_generator.py"
+    "merge:merge_inventory.py"
+    "dashboard:generate_dashboard.py"
+    "single-pdf:generate_single_pdf.py"
+)
+
+TOOL_NAME="${1:-}"
+shift || true
+
+FOUND=""
+for mapping in "${TOOL_MAP[@]}"; do
+    NAME="${mapping%%:*}"
+    SCRIPT="${mapping##*:}"
+    if [ "${TOOL_NAME}" = "${NAME}" ]; then
+        FOUND="${SCRIPT}"
+        break
+    fi
+done
+
+if [ -z "${FOUND}" ]; then
+    echo "[!] Unknown tool: ${TOOL_NAME}"
+    echo "    Run 'ast --help' to see available tools."
+    exit 1
+fi
+
+exec "${VENV_PY}" "${SCRIPT_DIR}/scripts/${FOUND}" "$@"
