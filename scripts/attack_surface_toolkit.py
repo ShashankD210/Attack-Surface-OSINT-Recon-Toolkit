@@ -1016,6 +1016,7 @@ DATE_FMT = "%b %d %H:%M:%S %Y %Z"
 
 def parse_cert(hostname: str, port: int, timeout: int = 10) -> dict:
     ctx = ssl.create_default_context()
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE  # inspect even self-signed/expired certs
 
